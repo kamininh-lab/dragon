@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>玉龍の背に乗って</title>
+    <!-- CesiumJS dependencies -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <!-- Three.js dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            touch-action: none;
+            /* prevent browser scroll/pinch from competing */
+        }
+
+        #cesiumContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #threeContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 5;
+            pointer-events: none;
+            /* Let clicks pass to Cesium if needed */
+        }
+
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        .hud {
+            padding: 20px;
+            color: #ffffff;
+            text-shadow: 0 0 8px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 1);
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 2rem;
+            z-index: 20;
+            transition: opacity 1s;
+        }
+
+        .menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(10, 30, 70, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            color: #aaddff;
+            text-align: center;
+            z-index: 15;
+            display: none;
+            /* Hidden until loaded */
+        }
+
+        .menu-title {
+            font-size: 4.5rem;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 1), 0 0 60px rgba(0, 150, 255, 0.7);
+            margin-bottom: 12px;
+            letter-spacing: 6px;
+        }
+
+        .menu-subtitle {
+            font-size: 1.15rem;
+            margin-bottom: 40px;
+            color: #eeffff;
+            max-width: 580px;
+            line-height: 1.8;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .button {
+            padding: 15px 45px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(135deg, #005599, #0088cc);
+            border: 2px solid #44aaff;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 0 20px #0077cc, inset 0 0 15px rgba(0, 150, 255, 0.25);
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            pointer-events: auto;
+        }
+
+        .button:hover {
+            transform: scale(1.06);
+            box-shadow: 0 0 40px #0099ff, inset 0 0 25px rgba(0, 150, 255, 0.4);
+            background: linear-gradient(135deg, #0066aa, #00aaff);
+        }
+
+        .button:active {
+            transform: scale(0.95);
+        }
+
+        /* ---- Responsive for mobile ---- */
+        @media (max-width: 768px) {
+            .menu-title {
+                font-size: 2.2rem;
+                letter-spacing: 2px;
+                margin-bottom: 8px;
+            }
+
+            .menu-subtitle {
+                font-size: 0.85rem;
+                padding: 12px 14px;
+                margin: 0 8px 18px;
+                max-width: 95vw;
+                line-height: 1.7;
+            }
+
+            .button {
+                padding: 12px 28px;
+                font-size: 1.05rem;
+                letter-spacing: 2px;
+            }
+
+            .hud {
+                font-size: 13px;
+                padding: 10px;
+            }
+        }
+
+        /* ---- Mobile speed control buttons ---- */
+        .mobile-speed-btn {
+            position: fixed;
+            width: 78px;
+            height: 78px;
+            border-radius: 50%;
+            border: 2px solid rgba(68, 170, 255, 0.8);
+            background: rgba(0, 55, 120, 0.55);
+            color: #fff;
+            font-size: 0.76rem;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            z-index: 13;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            letter-spacing: 1px;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+            box-shadow: 0 0 14px rgba(0, 100, 255, 0.4);
+            line-height: 1.35;
+        }
+
+        #boostBtn {
+            bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+            right: 28px;
+        }
+
+        #hoverBtn {
+            bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #slowBtn {
+            bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+            left: 28px;
+        }
+
+        /* ---- Virtual joystick indicator ---- */
+        #touchOuter {
+            position: fixed;
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            border: 2.5px solid rgba(100, 200, 255, 0.45);
+            background: rgba(0, 100, 200, 0.08);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            display: none;
+            z-index: 12;
+        }
+
+        #touchInner {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(100, 200, 255, 0.55);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            display: none;
+            z-index: 12;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="cesiumContainer"></div>
+    <div id="threeContainer"></div>
+
+    <div id="uiLayer">
+        <div class="hud">
+            <div>ALTITUDE: <span id="altValue">0</span>m</div>
+            <div>SPEED: <span id="speedValue">0</span>km/h</div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading-overlay">
+        LOADING 3D WORLD...
+    </div>
+
+    <div id="startMenu" class="menu-overlay">
+        <h1 class="menu-title">玉龍の背に乗って</h1>
+        <div class="menu-subtitle">
+            <strong>【 フライト・マニュアル 】</strong><br><br>
+            <strong>【 タッチ操作 】</strong><br>
+            画面スライド上下：上昇・降下<br>
+            画面スライド左右：左右旋回<br>
+            BOOST：加速 / SLOW：減速 / HOVER：ホバリング（停止）<br><br>
+            鹿児島市街地や桜島の上空を自由に飛び回ろう！
+        </div>
+        <button id="startBtn" class="button">START FLIGHT</button>
+    </div>
+
+    <!-- Mobile speed controls (shown only when game is playing on touch devices) -->
+    <button id="boostBtn" class="mobile-speed-btn">BOOST<br>加速</button>
+    <button id="hoverBtn" class="mobile-speed-btn">HOVER<br>停止</button>
+    <button id="slowBtn" class="mobile-speed-btn">SLOW<br>減速</button>
+
+    <!-- Virtual joystick indicator (shown on touch) -->
+    <div id="touchOuter"></div>
+    <div id="touchInner"></div>
+
+    <script>
+        // =====================================================
+        //  GLOBAL VARIABLES
+        // =====================================================
+        let viewer; // Cesium
+        let scene, camera, renderer; // Three.js
+        let sunLight;
+
+        // Dragon configuration
+        let dragonGroup;
+        let dragonPivot; // pivot inside dragonGroup for wing-flap animation
+        let mixer; // AnimationMixer for loaded GLTF
+        const wingUniforms = { uFlapPhase: { value: 0 } }; // wing flap shader uniform
+        const historyBuffer = [];
+
+        // Flight dynamics variables
+        let currentSpeed = 0;
+        const targetSpeedBase = 250;
+        let targetSpeed = targetSpeedBase;
+        let dPitch = 0, dYaw = 0, dRoll = 0;
+
+        // Geographic Position tracking (ECEF)
+        // Start at Kagoshima City facing Sakurajima
+        let dragonEcefPos = Cesium.Cartesian3.fromDegrees(130.5614, 31.6105, 1200);
+        // Origin for Three.js World inside ECEF
+        let centerECEF = dragonEcefPos;
+
+        let gameState = 'init';
+        const keys = {};
+
+        // ---- Touch / swipe input ----
+        const touchInput = { pitch: 0, yaw: 0 };
+        const activeTouches = {};
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.Shift = true;
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') keys.Control = true;
+            if (e.code === 'Space') keys.Space = true;
+            keys[e.code] = true; keys[e.key] = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.Shift = false;
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') keys.Control = false;
+            if (e.code === 'Space') keys.Space = false;
+            keys[e.code] = false; keys[e.key] = false;
+        });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+
+        // ---- Touch control setup ----
+        const boostBtn = document.getElementById('boostBtn');
+        const hoverBtn = document.getElementById('hoverBtn');
+        const slowBtn = document.getElementById('slowBtn');
+        const touchOuter = document.getElementById('touchOuter');
+        const touchInner = document.getElementById('touchInner');
+
+        boostBtn.addEventListener('touchstart', e => { e.stopPropagation(); keys.Shift = true; }, { passive: true });
+        boostBtn.addEventListener('touchend', () => { keys.Shift = false; });
+        boostBtn.addEventListener('touchcancel', () => { keys.Shift = false; });
+        hoverBtn.addEventListener('touchstart', e => { e.stopPropagation(); keys.Space = true; }, { passive: true });
+        hoverBtn.addEventListener('touchend', () => { keys.Space = false; });
+        hoverBtn.addEventListener('touchcancel', () => { keys.Space = false; });
+        slowBtn.addEventListener('touchstart', e => { e.stopPropagation(); keys.Control = true; }, { passive: true });
+        slowBtn.addEventListener('touchend', () => { keys.Control = false; });
+        slowBtn.addEventListener('touchcancel', () => { keys.Control = false; });
+
+        document.addEventListener('touchstart', onTouchStart, { passive: false });
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd, { passive: false });
+        document.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+        function onTouchStart(e) {
+            if (gameState !== 'playing') return;
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (touch.target === boostBtn || touch.target === hoverBtn || touch.target === slowBtn) continue;
+                activeTouches[touch.identifier] = {
+                    startX: touch.clientX, startY: touch.clientY,
+                    currentX: touch.clientX, currentY: touch.clientY
+                };
+                if (Object.keys(activeTouches).length === 1) {
+                    touchOuter.style.left = touch.clientX + 'px';
+                    touchOuter.style.top = touch.clientY + 'px';
+                    touchOuter.style.display = 'block';
+                    touchInner.style.left = touch.clientX + 'px';
+                    touchInner.style.top = touch.clientY + 'px';
+                    touchInner.style.display = 'block';
+                }
+            }
+            updateTouchInput();
+        }
+
+        function onTouchMove(e) {
+            if (gameState !== 'playing') return;
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (activeTouches[touch.identifier]) {
+                    activeTouches[touch.identifier].currentX = touch.clientX;
+                    activeTouches[touch.identifier].currentY = touch.clientY;
+                }
+            }
+            updateTouchInput();
+            const ids = Object.keys(activeTouches);
+            if (ids.length > 0) {
+                const t = activeTouches[ids[0]];
+                const dx = t.currentX - t.startX;
+                const dy = t.currentY - t.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxR = 50;
+                const cx = dist > maxR ? t.startX + (dx / dist) * maxR : t.currentX;
+                const cy = dist > maxR ? t.startY + (dy / dist) * maxR : t.currentY;
+                touchInner.style.left = cx + 'px';
+                touchInner.style.top = cy + 'px';
+            }
+        }
+
+        function onTouchEnd(e) {
+            for (const touch of e.changedTouches) {
+                delete activeTouches[touch.identifier];
+            }
+            if (Object.keys(activeTouches).length === 0) {
+                touchOuter.style.display = 'none';
+                touchInner.style.display = 'none';
+            }
+            updateTouchInput();
+        }
+
+        function updateTouchInput() {
+            const ids = Object.keys(activeTouches);
+            if (ids.length === 0) {
+                touchInput.pitch = 0;
+                touchInput.yaw = 0;
+                return;
+            }
+            const t = activeTouches[ids[0]];
+            const dx = t.currentX - t.startX;
+            const dy = t.currentY - t.startY;
+            const sens = 70; // pixels for full deflection
+            // Slide right → yaw right (−1), slide left → yaw left (+1)
+            touchInput.yaw = Math.max(-1, Math.min(1, -dx / sens));
+            // Slide up → ascend (+1), slide down → descend (−1)
+            touchInput.pitch = Math.max(-1, Math.min(1, -dy / sens));
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            document.getElementById('startMenu').style.display = 'none';
+
+            // Show mobile speed buttons on touch-capable devices
+            if ('ontouchstart' in window) {
+                boostBtn.style.display = 'flex';
+                hoverBtn.style.display = 'flex';
+                slowBtn.style.display = 'flex';
+            }
+
+            // Clear any lingering touch state from the menu screen
+            for (const id in activeTouches) delete activeTouches[id];
+            touchInput.pitch = 0;
+            touchInput.yaw = 0;
+            keys.Shift = false;
+            keys.Control = false;
+            keys.Space = false;
+            touchOuter.style.display = 'none';
+            touchInner.style.display = 'none';
+
+            // Reset flight dynamics
+            dPitch = 0;
+            dYaw = 0; // Look North in ENU (East-North-Up)
+            dRoll = 0;
+            currentSpeed = targetSpeedBase;
+            dragonEcefPos = Cesium.Cartesian3.fromDegrees(130.5614, 31.6105, 1200);
+            centerECEF = dragonEcefPos;
+
+            historyBuffer.length = 0;
+
+            // Populate initial history assuming we came from behind
+            for (let i = 0; i < 100; i++) {
+                historyBuffer.push({
+                    pos: new THREE.Vector3(dragonEcefPos.x, dragonEcefPos.y, dragonEcefPos.z),
+                    rot: dragonGroup.quaternion.clone()
+                });
+            }
+        }
+
+        // =====================================================
+        //  INIT ENGINES
+        // =====================================================
+        async function init() {
+            // --- 1. CESIUM SETUP ---
+            // To use Google Photorealistic 3D Tiles for maximum realism, add your Cesium Ion token here:
+            Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiNWEzMzkzYS0wMTExLTRhYTEtYmVhNS1jMGI5NTMwMmFjOGIiLCJpZCI6NDAzNDAyLCJpYXQiOjE3NzM0NTk5MjR9.Opm7UmTOeTkj5WmKUIfLrkyIFO27WPAsi71Esyt_3H4';
+            let terrainProvider;
+            try {
+                terrainProvider = await Cesium.createWorldTerrainAsync();
+            } catch (e) {
+                console.log("Failed to load World Terrain.", e);
+                terrainProvider = new Cesium.EllipsoidTerrainProvider();
+            }
+
+            viewer = new Cesium.Viewer('cesiumContainer', {
+                terrainProvider: terrainProvider,
+                animation: false,
+                baseLayerPicker: false,
+                fullscreenButton: false,
+                geocoder: false,
+                homeButton: false,
+                infoBox: false,
+                sceneModePicker: false,
+                selectionIndicator: false,
+                timeline: false,
+                navigationHelpButton: false,
+                scene3DOnly: true,
+                skyAtmosphere: false,
+                contextOptions: { webgl: { alpha: false } },
+                useDefaultRenderLoop: false
+            });
+
+            // CRITICAL: disable Cesium's own camera controller so it doesn't
+            // fight our manual camera positioning every frame.
+            viewer.scene.screenSpaceCameraController.enableInputs = false;
+
+            // Set daytime to ensure good lighting (August 1st, 13:00 JST = 04:00 UTC)
+            viewer.clock.currentTime = Cesium.JulianDate.fromIso8601("2026-08-01T04:00:00Z");
+
+            viewer.scene.globe.enableLighting = false;
+
+            // Try load high-res 3D Tiles
+            try {
+                const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+                viewer.scene.primitives.add(tileset);
+            } catch (e) {
+                console.log("Failed to load Google 3D Tiles. Using standard OSM Buildings.", e);
+                try {
+                    const osmBuildings = await Cesium.createOsmBuildingsAsync();
+                    viewer.scene.primitives.add(osmBuildings);
+                } catch (e2) {
+                    console.log("OSM Buildings failed too", e2);
+                }
+            }
+
+            // --- 2. THREE.JS SETUP ---
+            scene = new THREE.Scene();
+            // Transparent clear color so Cesium shows through
+            scene.background = null;
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 15000);
+            camera.matrixAutoUpdate = false; // We sync to Cesium
+
+            const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+            renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+            renderer.setClearColor(0x000000, 0); // Transparent
+            renderer.outputEncoding = THREE.sRGBEncoding; // Correct texture color
+            // Shadows are expensive on mobile GPU — disable them
+            renderer.shadowMap.enabled = !isMobile;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('threeContainer').appendChild(renderer.domElement);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, isMobile ? 1.5 : 1.2));
+            sunLight = new THREE.DirectionalLight(0xFFE484, 2.0);
+            sunLight.castShadow = !isMobile;
+            // Optimization for shadow map sizes
+            sunLight.shadow.camera.left = -50;
+            sunLight.shadow.camera.right = 50;
+            sunLight.shadow.camera.top = 50;
+            sunLight.shadow.camera.bottom = -50;
+            scene.add(sunLight);
+            // Fill light from below to brighten underside
+            const fillLight = new THREE.DirectionalLight(0xaaccff, 0.6);
+            fillLight.position.set(0, -1, 0);
+            scene.add(fillLight);
+
+            // Build Dragon
+            buildDragon();
+
+            // Reveal Menu
+            document.getElementById('loading').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('startMenu').style.display = 'flex';
+                gameState = 'start';
+                clock.start();
+                animate();
+            }, 1000);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                // Keep pixel ratio in sync after orientation change
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+            });
+        }
+
+        // =====================================================
+        //  BUILD DRAGON (THREE.JS)  — Loading GLTF Model
+        // =====================================================
+        function buildDragon() {
+            dragonGroup = new THREE.Group();
+            dragonGroup.scale.setScalar(2.2);
+            scene.add(dragonGroup);
+
+            const loader = new THREE.GLTFLoader();
+            loader.load('Meshy_AI_Dragon_0315165639_texture.glb', (gltf) => {
+                const model = gltf.scene;
+
+                // Center the model and normalize its size
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+
+                // Target size for the dragon length (approx 20 meters)
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 20 / (maxDim || 1);
+
+                model.scale.setScalar(scale);
+                // Center it at origin, then apply offset
+                model.position.sub(center.multiplyScalar(scale));
+
+                model.traverse((node) => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                        if (node.material) {
+                            // Inject wing-flap vertex shader into the material
+                            node.material.onBeforeCompile = (shader) => {
+                                shader.uniforms.uFlapPhase = wingUniforms.uFlapPhase;
+                                shader.vertexShader = 'uniform float uFlapPhase;\n' + shader.vertexShader;
+                                shader.vertexShader = shader.vertexShader.replace(
+                                    '#include <begin_vertex>',
+                                    `#include <begin_vertex>
+                                    float wingDist = abs(transformed.x);
+                                    float wingThresh = 0.25;
+                                    if (wingDist > wingThresh) {
+                                        float wingFactor = (wingDist - wingThresh) / (1.0 - wingThresh);
+                                        wingFactor = wingFactor * wingFactor * wingFactor;
+                                        transformed.y += sin(uFlapPhase) * wingFactor * 0.6;
+                                    }
+                                    float tailZone = max(0.0, transformed.y - 0.3) / 0.6;
+                                    if (tailZone > 0.0) {
+                                        float tailSway = tailZone * tailZone;
+                                        transformed.x += sin(uFlapPhase * 0.6) * tailSway * 0.15;
+                                        transformed.z += sin(uFlapPhase * 0.4 + 1.0) * tailSway * 0.1;
+                                    }`
+                                );
+                            };
+                            node.material.needsUpdate = true;
+                        }
+                    }
+                });
+
+                const pivot = new THREE.Group();
+                pivot.add(model);
+                
+                // Meshy AI dragon: lay horizontal (X:-90°) + flip heading (Y:180°)
+                pivot.rotation.set(-Math.PI / 2, Math.PI, 0);
+                
+                // Offset downward to fit the camera view nicely
+                pivot.position.set(0, -2, 0);
+
+                dragonPivot = pivot;
+                dragonGroup.add(pivot);
+
+                // Setup animations if the GLTF has them
+                if (gltf.animations && gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(model);
+                    gltf.animations.forEach((clip) => {
+                        mixer.clipAction(clip).play();
+                    });
+                }
+            }, undefined, (error) => {
+                console.error('Error loading dragon model:', error);
+            });
+        }
+
+        // =====================================================
+        //  SYNC CESIUM TO THREE JS
+        // =====================================================
+        function syncCamera() {
+            // Sync projection matrix
+            camera.fov = Cesium.Math.toDegrees(viewer.camera.frustum.fovy);
+            camera.aspect = viewer.camera.frustum.aspectRatio;
+            camera.near = viewer.camera.frustum.near > 0.1 ? viewer.camera.frustum.near : 0.1;
+            camera.far = viewer.camera.frustum.far;
+            camera.updateProjectionMatrix();
+
+            // Sync view matrix with a shifted origin (centerECEF) to avoid jittering
+            const camWorld = new THREE.Matrix4().fromArray(viewer.camera.inverseViewMatrix);
+            const offset = new THREE.Matrix4().makeTranslation(-centerECEF.x, -centerECEF.y, -centerECEF.z);
+
+            // Translated world matrix
+            const shiftedCamWorld = new THREE.Matrix4().multiplyMatrices(offset, camWorld);
+
+            camera.matrixWorld.copy(shiftedCamWorld);
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+        }
+
+        // =====================================================
+        //  MAIN LOOP
+        // =====================================================
+        const clock = new THREE.Clock();
+        let T = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1);
+            T += dt;
+
+            if (gameState === 'init') return; // wait for load
+
+            if (gameState === 'playing') {
+                // ---- Flight Dynamics ----
+                // Throttle (Hover overrides all)
+                if (keys.Space) targetSpeed = 0; // Hover/Stop
+                else if (keys.Shift) targetSpeed = targetSpeedBase * 4.0;
+                else if (keys.Control) targetSpeed = targetSpeedBase * 0.3;
+                else targetSpeed = targetSpeedBase;
+
+                currentSpeed = THREE.MathUtils.lerp(currentSpeed, targetSpeed, 2 * dt);
+
+                // Pitch & Yaw inputs (touch as base; keyboard overrides)
+                let inputPitch = touchInput.pitch;
+                let inputYaw = touchInput.yaw;
+                if (keys['w'] || keys['ArrowUp']) inputPitch = -1; // Pitch Down
+                if (keys['s'] || keys['ArrowDown']) inputPitch = 1; // Pitch Up
+                if (keys['a'] || keys['ArrowLeft']) inputYaw = 1; // Yaw Left
+                if (keys['d'] || keys['ArrowRight']) inputYaw = -1; // Yaw Right
+
+                const turnSpeed = 1.5;
+                dPitch += inputPitch * turnSpeed * dt;
+                dYaw += inputYaw * turnSpeed * dt;
+
+                // Constrain Pitch (keep away from vertical to avoid gimbal-lock zone)
+                dPitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, dPitch));
+                dRoll = THREE.MathUtils.lerp(dRoll, inputYaw * -1.0, 4 * dt);
+
+                // ENU frame of Dragon position
+                const enuMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(dragonEcefPos);
+                const enuQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(enuMatrix));
+
+                // Base rotation: aligns Three.js space (-Z forward, Y up) to ENU (Y North, Z Up)
+                const baseLocalQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                // Flight orientation matrix
+                const flightLocalQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(dPitch, dYaw, dRoll, 'YXZ'));
+
+                // Full ECEF Rotation
+                dragonGroup.quaternion.copy(enuQuat).multiply(baseLocalQuat).multiply(flightLocalQuat);
+
+                // Forward flight vector (in shifted ECEF = Three.js world)
+                const localForward = new THREE.Vector3(0, 0, -1);
+                localForward.applyQuaternion(dragonGroup.quaternion);
+                dragonEcefPos.x += localForward.x * currentSpeed * dt;
+                dragonEcefPos.y += localForward.y * currentSpeed * dt;
+                dragonEcefPos.z += localForward.z * currentSpeed * dt;
+
+                // Collision with Earth
+                const carto = Cesium.Cartographic.fromCartesian(dragonEcefPos);
+                if (carto) {
+                    let groundHeight = viewer.scene.globe.getHeight(carto) || 0;
+                    if (carto.height < groundHeight + 10) {
+                        carto.height = groundHeight + 10;
+                        const newPos = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height);
+                        dragonEcefPos.x = newPos.x;
+                        dragonEcefPos.y = newPos.y;
+                        dragonEcefPos.z = newPos.z;
+                        dPitch = Math.max(0, dPitch); // Auto-level
+                    }
+                }
+
+                // Dragon visually stays at 0,0,0 in its shifted relative scene!
+                dragonGroup.position.set(0, 0, 0);
+                dragonGroup.updateMatrixWorld(true);
+
+                // Record History for tail tracking (saving ECEF coordinates using THREE class)
+                const currentThreePos = new THREE.Vector3(dragonEcefPos.x, dragonEcefPos.y, dragonEcefPos.z);
+                const distMoved = historyBuffer.length > 0 ? historyBuffer[0].pos.distanceTo(currentThreePos) : 999;
+                if (distMoved > 2.0) {
+                    historyBuffer.unshift({ pos: currentThreePos.clone(), rot: dragonGroup.quaternion.clone() });
+                    if (historyBuffer.length > 200) historyBuffer.pop();
+                }
+
+                // Camera Setup (riding much further behind and above the dragon)
+                const flatFlightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(dPitch * 0.5, dYaw, dRoll * 0.7, 'YXZ'));
+                const flatQuat = new THREE.Quaternion().copy(enuQuat).multiply(baseLocalQuat).multiply(flatFlightQuat);
+
+                // Wide rear offset for a grander view
+                const offset = new THREE.Vector3(0, 35, 110);
+                offset.applyQuaternion(flatQuat);
+
+                const idealCamEcef = new Cesium.Cartesian3(
+                    dragonEcefPos.x + offset.x,
+                    dragonEcefPos.y + offset.y,
+                    dragonEcefPos.z + offset.z
+                );
+
+                // Keep camera above ground
+                const camCarto = Cesium.Cartographic.fromCartesian(idealCamEcef);
+                if (camCarto) {
+                    const camGround = viewer.scene.globe.getHeight(camCarto) || 0;
+                    if (camCarto.height < camGround + 5) {
+                        camCarto.height = camGround + 5;
+                        const modCamEcef = Cesium.Cartesian3.fromRadians(camCarto.longitude, camCarto.latitude, camCarto.height);
+                        idealCamEcef.x = modCamEcef.x; idealCamEcef.y = modCamEcef.y; idealCamEcef.z = modCamEcef.z;
+                    }
+                }
+
+                const currentCamEcef = viewer.camera.position;
+                Cesium.Cartesian3.lerp(currentCamEcef, idealCamEcef, 4 * dt, currentCamEcef);
+                viewer.camera.position = currentCamEcef;
+
+                const localUp = new THREE.Vector3(0, 1, 0);
+                localUp.applyQuaternion(flatQuat);
+
+                // --- Robust camera orientation (fixes visual glitch when pitching up) ---
+                const camDir = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.subtract(dragonEcefPos, currentCamEcef, new Cesium.Cartesian3()),
+                    new Cesium.Cartesian3()
+                );
+
+                // Normalize candidate up vector from flight orientation
+                let upCand = Cesium.Cartesian3.normalize(
+                    new Cesium.Cartesian3(localUp.x, localUp.y, localUp.z),
+                    new Cesium.Cartesian3()
+                );
+
+                // Gimbal-lock guard: if up is nearly collinear with direction
+                // (|dot| > 0.98), fall back to ECEF radial "up" (away from Earth center)
+                if (Math.abs(Cesium.Cartesian3.dot(camDir, upCand)) > 0.98) {
+                    upCand = Cesium.Cartesian3.normalize(
+                        new Cesium.Cartesian3(currentCamEcef.x, currentCamEcef.y, currentCamEcef.z),
+                        new Cesium.Cartesian3()
+                    );
+                }
+
+                // Gram-Schmidt orthogonalization: make up exactly perpendicular to direction
+                const upDot = Cesium.Cartesian3.dot(upCand, camDir);
+                const upPerp = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.subtract(
+                        upCand,
+                        Cesium.Cartesian3.multiplyByScalar(camDir, upDot, new Cesium.Cartesian3()),
+                        new Cesium.Cartesian3()
+                    ),
+                    new Cesium.Cartesian3()
+                );
+
+                viewer.camera.direction = camDir;
+                viewer.camera.up = upPerp;
+                viewer.camera.right = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.cross(camDir, upPerp, new Cesium.Cartesian3()),
+                    new Cesium.Cartesian3()
+                );
+
+                // Update HUD
+                if (Math.floor(T * 10) % 5 === 0) {
+                    document.getElementById('altValue').innerText = Math.floor(carto.height);
+                    document.getElementById('speedValue').innerText = Math.floor((currentSpeed / targetSpeedBase) * 300);
+                }
+
+            } else if (gameState === 'start') {
+                // ---- Menu Orbit Camera ----
+                const carto = Cesium.Cartographic.fromCartesian(dragonEcefPos);
+                const offsetCarto = new Cesium.Cartographic(carto.longitude + Math.sin(T * 0.1) * 0.001, carto.latitude + Math.cos(T * 0.1) * 0.001, carto.height + 60);
+                const camPos = Cesium.Cartesian3.fromRadians(offsetCarto.longitude, offsetCarto.latitude, offsetCarto.height);
+                viewer.camera.position = camPos;
+                const menuDir = Cesium.Cartesian3.normalize(Cesium.Cartesian3.subtract(dragonEcefPos, camPos, new Cesium.Cartesian3()), new Cesium.Cartesian3());
+                let menuUp = Cesium.Cartesian3.normalize(new Cesium.Cartesian3(camPos.x, camPos.y, camPos.z), new Cesium.Cartesian3());
+                // Gram-Schmidt: ensure up is perpendicular to direction
+                const menuUpDot = Cesium.Cartesian3.dot(menuUp, menuDir);
+                menuUp = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.subtract(menuUp, Cesium.Cartesian3.multiplyByScalar(menuDir, menuUpDot, new Cesium.Cartesian3()), new Cesium.Cartesian3()),
+                    new Cesium.Cartesian3()
+                );
+                viewer.camera.direction = menuDir;
+                viewer.camera.up = menuUp;
+                viewer.camera.right = Cesium.Cartesian3.normalize(
+                    Cesium.Cartesian3.cross(menuDir, menuUp, new Cesium.Cartesian3()),
+                    new Cesium.Cartesian3()
+                );
+
+                // Dragon idle rotation
+                const enuMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(dragonEcefPos);
+                const enuQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(enuMatrix));
+                const baseLocalQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+                const flightLocalQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, T * 0.2, 0, 'YXZ'));
+                dragonGroup.quaternion.copy(enuQuat).multiply(baseLocalQuat).multiply(flightLocalQuat);
+                dragonGroup.position.set(0, 0, 0);
+                dragonGroup.updateMatrixWorld(true);
+            }
+
+            // Update GLTF animation mixer
+            if (mixer) mixer.update(dt);
+
+            // Wing-flap shader animation (only wings move, body stays still)
+            {
+                const flapSpeed = 1.2;
+                wingUniforms.uFlapPhase.value = T * flapSpeed * Math.PI * 2;
+            }
+
+            // Align sun light directionally above the dragon relative to earth
+            const upVec = new THREE.Vector3(centerECEF.x, centerECEF.y, centerECEF.z).normalize();
+            sunLight.position.copy(upVec.multiplyScalar(400));
+            sunLight.target = dragonGroup; // point at dragon
+
+            // RENDERING
+            viewer.render(); // draw cesium back layer
+            centerECEF = dragonEcefPos; // Update common center shift
+            syncCamera(); // match threeJS camera projection with cesium
+            renderer.render(scene, camera); // draw dragon transparently over top
+        }
+
+        init(); // Start the engine
+
+    </script>
+</body>
+
+</html>
