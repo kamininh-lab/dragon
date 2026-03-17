@@ -268,7 +268,7 @@
             画面スライド上下：上昇・降下<br>
             画面スライド左右：左右旋回<br>
             BOOST：加速 / SLOW：減速 / HOVER：ホバリング（停止）<br><br>
-            東京スカイツリーを飛び立ち、鹿児島玉龍高等学校を目指せ！<br>
+            桜島上空を飛び立ち、鹿児島玉龍高等学校を目指せ！<br>
             上空に浮かぶ<strong>十字架のシンボル</strong>に触れるとゴール！
         </div>
         <button id="startBtn" class="button">START FLIGHT</button>
@@ -315,8 +315,8 @@
         let dPitch = 0, dYaw = 0, dRoll = 0;
 
         // Geographic Position tracking (ECEF)
-        // Start at Tokyo Skytree
-        let dragonEcefPos = Cesium.Cartesian3.fromDegrees(139.8107, 35.7101, 1200);
+        // Start at Sakurajima, Kagoshima
+        let dragonEcefPos = Cesium.Cartesian3.fromDegrees(130.6573, 31.5797, 1200);
         // Origin for Three.js World inside ECEF
         let centerECEF = dragonEcefPos;
 
@@ -474,7 +474,7 @@
             dYaw = 0; // Look North in ENU (East-North-Up)
             dRoll = 0;
             currentSpeed = targetSpeedBase;
-            dragonEcefPos = Cesium.Cartesian3.fromDegrees(139.8107, 35.7101, 1200);
+            dragonEcefPos = Cesium.Cartesian3.fromDegrees(130.6573, 31.5797, 1200);
             centerECEF = dragonEcefPos;
 
             historyBuffer.length = 0;
