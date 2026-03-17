@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls /c/Users/user/OneDrive/Documents/GitHub/dragon/*.glb)"
+      "Bash(ls /c/Users/user/OneDrive/Documents/GitHub/dragon/*.glb)",
+      "Bash(node --version)",
+      "Bash(npx --version)",
+      "Bash(echo \"node_status:$?\")"
     ]
   }
 }
