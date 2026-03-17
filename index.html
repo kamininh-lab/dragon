@@ -328,6 +328,8 @@
         let goalCross = null;
         let goalEnuQuat = null; // cached ENU orientation at goal
         let goalReached = false;
+        let goalAura = null;
+        let goalLight = null;
 
         // ---- Touch / swipe input ----
         const touchInput = { pitch: 0, yaw: 0 };
@@ -708,7 +710,43 @@
                 const scale = 20 / (maxDim || 1);
                 model.scale.setScalar(scale);
                 model.position.sub(center.multiplyScalar(scale));
+
+                model.traverse((node) => {
+                    if (!node.isMesh || !node.material) return;
+                    const usesMaterialArray = Array.isArray(node.material);
+                    const materials = usesMaterialArray ? node.material : [node.material];
+                    const glowingMaterials = materials.map((material) => {
+                        const glowingMaterial = material.clone();
+                        if ('emissive' in glowingMaterial) {
+                            glowingMaterial.emissive = new THREE.Color(0x6fd6ff);
+                            glowingMaterial.emissiveIntensity = 0.65;
+                        }
+                        return glowingMaterial;
+                    });
+                    node.material = usesMaterialArray ? glowingMaterials : glowingMaterials[0];
+                });
+
                 goalCross.add(model);
+
+                const auraRadius = Math.max(12, maxDim * scale * 0.9);
+                goalAura = new THREE.Mesh(
+                    new THREE.SphereGeometry(auraRadius, 24, 24),
+                    new THREE.MeshBasicMaterial({
+                        color: 0x6fd6ff,
+                        transparent: true,
+                        opacity: 0.16,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false,
+                        toneMapped: false,
+                        side: THREE.BackSide
+                    })
+                );
+                goalAura.renderOrder = 2;
+                goalCross.add(goalAura);
+
+                goalLight = new THREE.PointLight(0x8fe6ff, 4.2, auraRadius * 20, 2);
+                goalLight.position.set(0, auraRadius * 0.35, 0);
+                goalCross.add(goalLight);
             }, undefined, (error) => {
                 console.error('Error loading cassle.glb:', error);
             });
@@ -958,6 +996,15 @@
                 );
                 if (goalEnuQuat) {
                     goalCross.quaternion.copy(goalEnuQuat);
+                }
+                if (goalAura) {
+                    const glowPulse = 0.5 + 0.5 * Math.sin(T * 3.2);
+                    const auraScale = 1 + glowPulse * 0.14;
+                    goalAura.scale.setScalar(auraScale);
+                    goalAura.material.opacity = 0.16 + glowPulse * 0.1;
+                }
+                if (goalLight) {
+                    goalLight.intensity = 4.2 + Math.sin(T * 3.2) * 0.9;
                 }
             } else {
                 // RENDERING
