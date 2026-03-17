@@ -324,7 +324,7 @@
         const keys = {};
 
         // Goal: 鹿児島玉龍高等学校 (altitude 500m above sea level)
-        const goalEcef = Cesium.Cartesian3.fromDegrees(130.561456, 31.610551, 500);
+        const goalEcef = Cesium.Cartesian3.fromDegrees(130.561456, 31.610551, 900);
         let goalCross = null;
         let goalEnuQuat = null; // cached ENU orientation at goal
         let goalReached = false;
@@ -684,25 +684,11 @@
         }
 
         // =====================================================
-        //  BUILD GOAL CROSS (THREE.JS)
+        //  BUILD GOAL SYMBOL (cassle.glb)
         // =====================================================
         function buildGoalCross() {
             goalCross = new THREE.Group();
-            const mat = new THREE.MeshStandardMaterial({
-                color: 0xffd700,
-                emissive: 0xffd700,
-                emissiveIntensity: 2.5,
-                metalness: 0.3,
-                roughness: 0.4
-            });
-            // Vertical bar
-            const vBar = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 4), mat);
-            goalCross.add(vBar);
-            // Horizontal bar (positioned ~1/3 from top)
-            const hBar = new THREE.Mesh(new THREE.BoxGeometry(20, 4, 4), mat);
-            hBar.position.y = 6;
-            goalCross.add(hBar);
-            goalCross.scale.setScalar(4);
+            goalCross.scale.setScalar(12);
             scene.add(goalCross);
 
             // Cache ENU orientation at goal (upright relative to Earth's surface)
@@ -710,6 +696,22 @@
             goalEnuQuat = new THREE.Quaternion()
                 .setFromRotationMatrix(new THREE.Matrix4().fromArray(enuMat))
                 .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
+
+            const loader = new THREE.GLTFLoader();
+            loader.load('cassle.glb', (gltf) => {
+                const model = gltf.scene;
+                // Center the model
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 20 / (maxDim || 1);
+                model.scale.setScalar(scale);
+                model.position.sub(center.multiplyScalar(scale));
+                goalCross.add(model);
+            }, undefined, (error) => {
+                console.error('Error loading cassle.glb:', error);
+            });
         }
 
         // =====================================================
