@@ -305,7 +305,7 @@
         let dragonGroup;
         let dragonPivot; // pivot inside dragonGroup for wing-flap animation
         let mixer; // AnimationMixer for loaded GLTF
-        const wingUniforms = { uFlapPhase: { value: 0 } }; // wing flap shader uniform
+        const wingUniforms = { uFlapPhase: { value: 0 }, uRoll: { value: 0 }, uPitch: { value: 0 } }; // wing flap shader uniform
         const historyBuffer = [];
 
         // Flight dynamics variables
@@ -638,30 +638,35 @@
                             // Inject wing-flap vertex shader into the material
                             node.material.onBeforeCompile = (shader) => {
                                 shader.uniforms.uFlapPhase = wingUniforms.uFlapPhase;
-                                shader.vertexShader = 'uniform float uFlapPhase;\n' + shader.vertexShader;
+                                shader.uniforms.uRoll = wingUniforms.uRoll;
+                                shader.uniforms.uPitch = wingUniforms.uPitch;
+                                shader.vertexShader = 'uniform float uFlapPhase;\nuniform float uRoll;\nuniform float uPitch;\n' + shader.vertexShader;
                                 shader.vertexShader = shader.vertexShader.replace(
                                     '#include <begin_vertex>',
                                     `#include <begin_vertex>
+                                    // Wing flap — reduced during banking turns and pitching
+                                    float bankAmount = clamp(abs(uRoll), 0.0, 1.0);
+                                    float pitchAmount = clamp(abs(uPitch) / 1.2, 0.0, 1.0);
+                                    float flapStrength = mix(1.0, 0.1, max(bankAmount, pitchAmount));
                                     float wingDist = abs(transformed.x);
                                     float wingThresh = 0.25;
                                     if (wingDist > wingThresh) {
                                         float wingFactor = (wingDist - wingThresh) / (1.0 - wingThresh);
                                         wingFactor = wingFactor * wingFactor * wingFactor;
-                                        transformed.y += sin(uFlapPhase) * wingFactor * 3.0; // Larger amplitude
+                                        transformed.y += sin(uFlapPhase) * wingFactor * 1.0 * flapStrength;
                                     }
-                                    
-                                    // Keep head relatively still (prevent Z swaying in positive Z/Y zone)
-                                    // And stretch legs backwards (negative Z/Y zone)
-                                    if (transformed.y < 0.0 && transformed.z < 0.0) {
-                                        transformed.z -= 1.0; // Stretch legs back
-                                        transformed.y += 0.5; // Tuck legs up slightly
-                                    }
-
+                                    // Tail sway
                                     float tailZone = max(0.0, transformed.y - 0.3) / 0.6;
-                                    if (tailZone > 0.0 && transformed.z < -0.5) { // Only sway actual tail, not head
+                                    if (tailZone > 0.0) {
                                         float tailSway = tailZone * tailZone;
                                         transformed.x += sin(uFlapPhase * 0.6) * tailSway * 0.15;
                                         transformed.z += sin(uFlapPhase * 0.4 + 1.0) * tailSway * 0.1;
+                                    }
+                                    // Leg motion — tuck forward/back gently with wing rhythm
+                                    if (transformed.y < -0.15 && abs(transformed.x) < 0.3) {
+                                        float legFactor = smoothstep(-0.15, -0.5, transformed.y);
+                                        transformed.z += sin(uFlapPhase * 0.5 + 0.8) * legFactor * 0.2;
+                                        transformed.y += sin(uFlapPhase * 0.5 + 0.8) * legFactor * 0.08;
                                     }`
                                 );
                             };
@@ -988,6 +993,8 @@
             {
                 const flapSpeed = 1.0; // Slower flap speed
                 wingUniforms.uFlapPhase.value = T * flapSpeed * Math.PI * 2;
+                wingUniforms.uRoll.value = dRoll;
+                wingUniforms.uPitch.value = dPitch;
             }
 
             // Align sun light directionally above the dragon relative to earth
