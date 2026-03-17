@@ -647,7 +647,7 @@
                                     if (wingDist > wingThresh) {
                                         float wingFactor = (wingDist - wingThresh) / (1.0 - wingThresh);
                                         wingFactor = wingFactor * wingFactor * wingFactor;
-                                        transformed.y += sin(uFlapPhase) * wingFactor * 0.6;
+                                        transformed.y += sin(uFlapPhase) * wingFactor * 2.0;
                                     }
                                     float tailZone = max(0.0, transformed.y - 0.3) / 0.6;
                                     if (tailZone > 0.0) {
@@ -978,7 +978,7 @@
 
             // Wing-flap shader animation (only wings move, body stays still)
             {
-                const flapSpeed = 1.2;
+                const flapSpeed = 4.0;
                 wingUniforms.uFlapPhase.value = T * flapSpeed * Math.PI * 2;
             }
 
