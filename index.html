@@ -665,8 +665,8 @@
                 const pivot = new THREE.Group();
                 pivot.add(model);
 
-                // Meshy AI dragon: pitch to sit correctly, flip front/back to match flight direction
-                pivot.rotation.set(50 * Math.PI / 180, Math.PI, 0);
+                // Meshy AI dragon: pitch to sit correctly
+                pivot.rotation.set(50 * Math.PI / 180, 0, 0);
 
                 // Offset downward to fit the camera view nicely
                 pivot.position.set(0, -2, 0);
