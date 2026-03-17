@@ -688,7 +688,7 @@
         // =====================================================
         function buildGoalCross() {
             goalCross = new THREE.Group();
-            goalCross.scale.setScalar(12);
+            goalCross.scale.setScalar(24);
             scene.add(goalCross);
 
             // Cache ENU orientation at goal (upright relative to Earth's surface)
@@ -957,8 +957,7 @@
                     goalEcef.z - centerECEF.z
                 );
                 if (goalEnuQuat) {
-                    const spinQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), T * 0.8);
-                    goalCross.quaternion.copy(goalEnuQuat).multiply(spinQuat);
+                    goalCross.quaternion.copy(goalEnuQuat);
                 }
             } else {
                 // RENDERING
