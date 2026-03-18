@@ -1133,6 +1133,18 @@
             const beamLight = new THREE.PointLight(0xffcc00, 2.0, 200, 2);
             beamGroup.add(beamLight);
 
+            // Set initial position and orientation immediately
+            beamGroup.position.set(
+                crossData.ecef.x - centerECEF.x,
+                crossData.ecef.y - centerECEF.y,
+                crossData.ecef.z - centerECEF.z
+            );
+            beamGroup.lookAt(new THREE.Vector3(
+                crossData.ecef.x + dirEcef.x - centerECEF.x,
+                crossData.ecef.y + dirEcef.y - centerECEF.y,
+                crossData.ecef.z + dirEcef.z - centerECEF.z
+            ));
+
             scene.add(beamGroup);
 
             activeBeams.push({
@@ -1189,6 +1201,19 @@
             beamGroup.add(new THREE.Mesh(glowGeo, glowMat));
 
             beamGroup.add(new THREE.PointLight(0x4488ff, 2.0, 200, 2));
+
+            // Set initial position and orientation immediately (avoid 1-frame flash at origin)
+            beamGroup.position.set(
+                chaserEcef.x - centerECEF.x,
+                chaserEcef.y - centerECEF.y,
+                chaserEcef.z - centerECEF.z
+            );
+            beamGroup.lookAt(new THREE.Vector3(
+                chaserEcef.x + dirEcef.x - centerECEF.x,
+                chaserEcef.y + dirEcef.y - centerECEF.y,
+                chaserEcef.z + dirEcef.z - centerECEF.z
+            ));
+
             scene.add(beamGroup);
 
             activeBeams.push({
