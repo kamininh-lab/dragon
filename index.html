@@ -408,11 +408,12 @@
 
         // ---- View toggle button ----
         const viewBtn = document.getElementById('viewBtn');
-        viewBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
+        function toggleCameraMode() {
             cameraMode = cameraMode === 'third' ? 'first' : 'third';
             if (dragonPivot) dragonPivot.visible = (cameraMode === 'third');
-        });
+        }
+        viewBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleCameraMode(); });
+        viewBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); toggleCameraMode(); }, { passive: true });
 
         document.addEventListener('touchstart', onTouchStart, { passive: false });
         document.addEventListener('touchmove', onTouchMove, { passive: false });
