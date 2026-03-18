@@ -216,6 +216,35 @@
             left: 28px;
         }
 
+        /* ---- View toggle button ---- */
+        #viewBtn {
+            position: fixed;
+            top: 54px;
+            right: 18px;
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 2px solid rgba(68, 170, 255, 0.8);
+            background: rgba(0, 55, 120, 0.55);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            z-index: 13;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            letter-spacing: 1px;
+            box-shadow: 0 0 14px rgba(0, 100, 255, 0.4);
+            line-height: 1.35;
+        }
+        #viewBtn:hover {
+            background: rgba(0, 80, 180, 0.7);
+            box-shadow: 0 0 20px rgba(0, 120, 255, 0.6);
+        }
+
         /* ---- Virtual joystick indicator ---- */
         #touchOuter {
             position: fixed;
@@ -281,6 +310,8 @@
             東京スカイツリーから鹿児島まで<br>
             玉龍の背に乗って飛び切った！
         </div>
+        <a href="https://www.keinet.com/gyoku/" class="button" style="text-decoration:none;display:inline-block;margin-bottom:12px;">玉龍のホームページへ</a>
+        <br>
         <button id="retryBtn" class="button">もう一度挑戦</button>
     </div>
 
@@ -288,6 +319,7 @@
     <button id="boostBtn" class="mobile-speed-btn">BOOST<br>加速</button>
     <button id="hoverBtn" class="mobile-speed-btn">HOVER<br>停止</button>
     <button id="slowBtn" class="mobile-speed-btn">SLOW<br>減速</button>
+    <button id="viewBtn">VIEW<br>視点切替</button>
 
     <!-- Virtual joystick indicator (shown on touch) -->
     <div id="touchOuter"></div>
@@ -321,6 +353,7 @@
         let centerECEF = dragonEcefPos;
 
         let gameState = 'init';
+        let cameraMode = 'third'; // 'third' or 'first'
         const keys = {};
 
         // Goal: 鹿児島玉龍高等学校 (altitude 500m above sea level)
@@ -371,6 +404,14 @@
         slowBtn.addEventListener('touchend', () => { keys.Control = false; });
         slowBtn.addEventListener('touchcancel', () => { keys.Control = false; });
 
+        // ---- View toggle button ----
+        const viewBtn = document.getElementById('viewBtn');
+        viewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            cameraMode = cameraMode === 'third' ? 'first' : 'third';
+            if (dragonPivot) dragonPivot.visible = (cameraMode === 'third');
+        });
+
         document.addEventListener('touchstart', onTouchStart, { passive: false });
         document.addEventListener('touchmove', onTouchMove, { passive: false });
         document.addEventListener('touchend', onTouchEnd, { passive: false });
@@ -380,7 +421,7 @@
             if (gameState !== 'playing') return;
             e.preventDefault();
             for (const touch of e.changedTouches) {
-                if (touch.target === boostBtn || touch.target === hoverBtn || touch.target === slowBtn) continue;
+                if (touch.target === boostBtn || touch.target === hoverBtn || touch.target === slowBtn || touch.target === viewBtn) continue;
                 activeTouches[touch.identifier] = {
                     startX: touch.clientX, startY: touch.clientY,
                     currentX: touch.clientX, currentY: touch.clientY
@@ -459,6 +500,11 @@
                 hoverBtn.style.display = 'flex';
                 slowBtn.style.display = 'flex';
             }
+
+            // Show view toggle and reset to third-person
+            viewBtn.style.display = 'flex';
+            cameraMode = 'third';
+            if (dragonPivot) dragonPivot.visible = true;
 
             // Clear any lingering touch state from the menu screen
             for (const id in activeTouches) delete activeTouches[id];
@@ -873,76 +919,125 @@
                     if (historyBuffer.length > 200) historyBuffer.pop();
                 }
 
-                // Camera Setup (riding much further behind and above the dragon)
+                // Camera Setup
                 const flatFlightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(dPitch * 0.5, dYaw, dRoll * 0.7, 'YXZ'));
                 const flatQuat = new THREE.Quaternion().copy(enuQuat).multiply(baseLocalQuat).multiply(flatFlightQuat);
 
-                // Wide rear offset for a grander view
-                const offset = new THREE.Vector3(0, 35, 110);
-                offset.applyQuaternion(flatQuat);
+                if (cameraMode === 'first') {
+                    // First-person: camera at dragon's head, looking forward
+                    const fpOffset = new THREE.Vector3(0, 3, -8);
+                    fpOffset.applyQuaternion(dragonGroup.quaternion);
 
-                const idealCamEcef = new Cesium.Cartesian3(
-                    dragonEcefPos.x + offset.x,
-                    dragonEcefPos.y + offset.y,
-                    dragonEcefPos.z + offset.z
-                );
+                    const idealCamEcef = new Cesium.Cartesian3(
+                        dragonEcefPos.x + fpOffset.x,
+                        dragonEcefPos.y + fpOffset.y,
+                        dragonEcefPos.z + fpOffset.z
+                    );
 
-                // Keep camera above ground
-                const camCarto = Cesium.Cartographic.fromCartesian(idealCamEcef);
-                if (camCarto) {
-                    const camGround = viewer.scene.globe.getHeight(camCarto) || 0;
-                    if (camCarto.height < camGround + 5) {
-                        camCarto.height = camGround + 5;
-                        const modCamEcef = Cesium.Cartesian3.fromRadians(camCarto.longitude, camCarto.latitude, camCarto.height);
-                        idealCamEcef.x = modCamEcef.x; idealCamEcef.y = modCamEcef.y; idealCamEcef.z = modCamEcef.z;
+                    const currentCamEcef = viewer.camera.position;
+                    Cesium.Cartesian3.lerp(currentCamEcef, idealCamEcef, 12 * dt, currentCamEcef);
+                    viewer.camera.position = currentCamEcef;
+
+                    // Look in dragon's forward direction
+                    const camDir = Cesium.Cartesian3.normalize(
+                        new Cesium.Cartesian3(localForward.x, localForward.y, localForward.z),
+                        new Cesium.Cartesian3()
+                    );
+
+                    const fpUp = new THREE.Vector3(0, 1, 0);
+                    fpUp.applyQuaternion(dragonGroup.quaternion);
+                    let upCand = Cesium.Cartesian3.normalize(
+                        new Cesium.Cartesian3(fpUp.x, fpUp.y, fpUp.z),
+                        new Cesium.Cartesian3()
+                    );
+
+                    if (Math.abs(Cesium.Cartesian3.dot(camDir, upCand)) > 0.98) {
+                        upCand = Cesium.Cartesian3.normalize(
+                            new Cesium.Cartesian3(currentCamEcef.x, currentCamEcef.y, currentCamEcef.z),
+                            new Cesium.Cartesian3()
+                        );
                     }
-                }
 
-                const currentCamEcef = viewer.camera.position;
-                Cesium.Cartesian3.lerp(currentCamEcef, idealCamEcef, 4 * dt, currentCamEcef);
-                viewer.camera.position = currentCamEcef;
+                    const upDot = Cesium.Cartesian3.dot(upCand, camDir);
+                    const upPerp = Cesium.Cartesian3.normalize(
+                        Cesium.Cartesian3.subtract(
+                            upCand,
+                            Cesium.Cartesian3.multiplyByScalar(camDir, upDot, new Cesium.Cartesian3()),
+                            new Cesium.Cartesian3()
+                        ),
+                        new Cesium.Cartesian3()
+                    );
 
-                const localUp = new THREE.Vector3(0, 1, 0);
-                localUp.applyQuaternion(flatQuat);
+                    viewer.camera.direction = camDir;
+                    viewer.camera.up = upPerp;
+                    viewer.camera.right = Cesium.Cartesian3.normalize(
+                        Cesium.Cartesian3.cross(camDir, upPerp, new Cesium.Cartesian3()),
+                        new Cesium.Cartesian3()
+                    );
+                } else {
+                    // Third-person: wide rear offset for a grander view
+                    const offset = new THREE.Vector3(0, 35, 110);
+                    offset.applyQuaternion(flatQuat);
 
-                // --- Robust camera orientation (fixes visual glitch when pitching up) ---
-                const camDir = Cesium.Cartesian3.normalize(
-                    Cesium.Cartesian3.subtract(dragonEcefPos, currentCamEcef, new Cesium.Cartesian3()),
-                    new Cesium.Cartesian3()
-                );
+                    const idealCamEcef = new Cesium.Cartesian3(
+                        dragonEcefPos.x + offset.x,
+                        dragonEcefPos.y + offset.y,
+                        dragonEcefPos.z + offset.z
+                    );
 
-                // Normalize candidate up vector from flight orientation
-                let upCand = Cesium.Cartesian3.normalize(
-                    new Cesium.Cartesian3(localUp.x, localUp.y, localUp.z),
-                    new Cesium.Cartesian3()
-                );
+                    // Keep camera above ground
+                    const camCarto = Cesium.Cartographic.fromCartesian(idealCamEcef);
+                    if (camCarto) {
+                        const camGround = viewer.scene.globe.getHeight(camCarto) || 0;
+                        if (camCarto.height < camGround + 5) {
+                            camCarto.height = camGround + 5;
+                            const modCamEcef = Cesium.Cartesian3.fromRadians(camCarto.longitude, camCarto.latitude, camCarto.height);
+                            idealCamEcef.x = modCamEcef.x; idealCamEcef.y = modCamEcef.y; idealCamEcef.z = modCamEcef.z;
+                        }
+                    }
 
-                // Gimbal-lock guard: if up is nearly collinear with direction
-                // (|dot| > 0.98), fall back to ECEF radial "up" (away from Earth center)
-                if (Math.abs(Cesium.Cartesian3.dot(camDir, upCand)) > 0.98) {
-                    upCand = Cesium.Cartesian3.normalize(
-                        new Cesium.Cartesian3(currentCamEcef.x, currentCamEcef.y, currentCamEcef.z),
+                    const currentCamEcef = viewer.camera.position;
+                    Cesium.Cartesian3.lerp(currentCamEcef, idealCamEcef, 4 * dt, currentCamEcef);
+                    viewer.camera.position = currentCamEcef;
+
+                    const localUp = new THREE.Vector3(0, 1, 0);
+                    localUp.applyQuaternion(flatQuat);
+
+                    // --- Robust camera orientation (fixes visual glitch when pitching up) ---
+                    const camDir = Cesium.Cartesian3.normalize(
+                        Cesium.Cartesian3.subtract(dragonEcefPos, currentCamEcef, new Cesium.Cartesian3()),
+                        new Cesium.Cartesian3()
+                    );
+
+                    let upCand = Cesium.Cartesian3.normalize(
+                        new Cesium.Cartesian3(localUp.x, localUp.y, localUp.z),
+                        new Cesium.Cartesian3()
+                    );
+
+                    if (Math.abs(Cesium.Cartesian3.dot(camDir, upCand)) > 0.98) {
+                        upCand = Cesium.Cartesian3.normalize(
+                            new Cesium.Cartesian3(currentCamEcef.x, currentCamEcef.y, currentCamEcef.z),
+                            new Cesium.Cartesian3()
+                        );
+                    }
+
+                    const upDot = Cesium.Cartesian3.dot(upCand, camDir);
+                    const upPerp = Cesium.Cartesian3.normalize(
+                        Cesium.Cartesian3.subtract(
+                            upCand,
+                            Cesium.Cartesian3.multiplyByScalar(camDir, upDot, new Cesium.Cartesian3()),
+                            new Cesium.Cartesian3()
+                        ),
+                        new Cesium.Cartesian3()
+                    );
+
+                    viewer.camera.direction = camDir;
+                    viewer.camera.up = upPerp;
+                    viewer.camera.right = Cesium.Cartesian3.normalize(
+                        Cesium.Cartesian3.cross(camDir, upPerp, new Cesium.Cartesian3()),
                         new Cesium.Cartesian3()
                     );
                 }
-
-                // Gram-Schmidt orthogonalization: make up exactly perpendicular to direction
-                const upDot = Cesium.Cartesian3.dot(upCand, camDir);
-                const upPerp = Cesium.Cartesian3.normalize(
-                    Cesium.Cartesian3.subtract(
-                        upCand,
-                        Cesium.Cartesian3.multiplyByScalar(camDir, upDot, new Cesium.Cartesian3()),
-                        new Cesium.Cartesian3()
-                    ),
-                    new Cesium.Cartesian3()
-                );
-
-                viewer.camera.direction = camDir;
-                viewer.camera.up = upPerp;
-                viewer.camera.right = Cesium.Cartesian3.normalize(
-                    Cesium.Cartesian3.cross(camDir, upPerp, new Cesium.Cartesian3()),
-                    new Cesium.Cartesian3()
-                );
 
                 // Update HUD
                 if (Math.floor(T * 10) % 5 === 0) {
@@ -1038,6 +1133,9 @@
                     goalReached = true;
                     gameState = 'goal';
                     document.getElementById('goalScreen').style.display = 'flex';
+                    viewBtn.style.display = 'none';
+                    cameraMode = 'third';
+                    if (dragonPivot) dragonPivot.visible = true;
                 }
             }
 
