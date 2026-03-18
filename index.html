@@ -832,7 +832,7 @@
                 goalLight.position.set(0, auraRadius * 0.35, 0);
                 goalCross.add(goalLight);
             }, undefined, (error) => {
-                console.error('Error loading cassle.glb:', error);
+                console.error('Error loading ship model:', error);
             });
         }
 
@@ -848,24 +848,40 @@
                 Cesium.Cartesian3.fromDegrees(130.557456, 31.610551, 800)   // West + mid-low
             ];
 
+            const loader = new THREE.GLTFLoader();
             offsets.forEach((ecef, i) => {
                 const group = new THREE.Group();
                 group.scale.setScalar(16);
                 scene.add(group);
 
-                // Build cross shape from two boxes
-                const crossMat = new THREE.MeshStandardMaterial({
-                    color: 0xff2222,
-                    emissive: new THREE.Color(0xff4400),
-                    emissiveIntensity: 0.8,
-                    metalness: 0.3,
-                    roughness: 0.5
+                // Load ship model
+                loader.load('Meshy_AI_Space_Battle_Ship_0318011232_texture.glb', (gltf) => {
+                    const model = gltf.scene;
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 20 / (maxDim || 1);
+                    model.scale.setScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+
+                    // Apply red emissive glow to all materials
+                    model.traverse((node) => {
+                        if (!node.isMesh || !node.material) return;
+                        const materials = Array.isArray(node.material) ? node.material : [node.material];
+                        const glowMats = materials.map((mat) => {
+                            const m = mat.clone();
+                            if ('emissive' in m) {
+                                m.emissive = new THREE.Color(0xff4400);
+                                m.emissiveIntensity = 0.8;
+                            }
+                            return m;
+                        });
+                        node.material = Array.isArray(node.material) ? glowMats : glowMats[0];
+                    });
+
+                    group.add(model);
                 });
-                const bar1 = new THREE.Mesh(new THREE.BoxGeometry(2, 12, 2), crossMat);
-                const bar2 = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 2), crossMat);
-                bar2.position.y = 3;
-                group.add(bar1);
-                group.add(bar2);
 
                 // Red aura
                 const aura = new THREE.Mesh(
