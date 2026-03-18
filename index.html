@@ -283,11 +283,25 @@
             white-space: nowrap;
             animation: alertFade 4s ease-in-out forwards;
         }
+
         @keyframes alertFade {
-            0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-            10% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            75% { opacity: 1; }
-            100% { opacity: 0; }
+            0% {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-10px);
+            }
+
+            10% {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+
+            75% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
         }
 
         /* ---- Virtual joystick indicator ---- */
@@ -323,7 +337,7 @@
     <div id="threeContainer"></div>
 
     <canvas id="minimap" width="150" height="150"></canvas>
-    <div id="chaserAlert">敵の猛攻が激しくなってきた。敵の弾幕をかいくぐって玉龍にたどりつけ！</div>
+    <div id="chaserAlert">敵の猛攻が激しくなってきた。</div>
 
     <div id="uiLayer">
         <div class="hud">
@@ -998,6 +1012,9 @@
             });
         }
 
+        let chaserLight = null;
+        let chaserAura = null;
+
         function spawnChaser() {
             if (chaserActive) return;
             chaserActive = true;
@@ -1010,26 +1027,36 @@
             alert.offsetHeight; // reflow
             alert.style.animation = 'alertFade 4s ease-in-out forwards';
 
-            const geo = new THREE.OctahedronGeometry(8, 0);
-            const mat = new THREE.MeshStandardMaterial({
-                color: 0xcc44ff, emissive: 0x9900cc, emissiveIntensity: 1.5,
-                transparent: true, opacity: 0.85, side: THREE.DoubleSide
-            });
-            const octa = new THREE.Mesh(geo, mat);
-
-            // Inner glow
-            const glowGeo = new THREE.OctahedronGeometry(12, 0);
-            const glowMat = new THREE.MeshBasicMaterial({
-                color: 0xdd66ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide
-            });
-            const glow = new THREE.Mesh(glowGeo, glowMat);
-
-            const light = new THREE.PointLight(0xcc44ff, 3, 200);
-
             chaserGroup = new THREE.Group();
-            chaserGroup.add(octa);
-            chaserGroup.add(glow);
-            chaserGroup.add(light);
+            chaserGroup.scale.setScalar(12);
+
+            // Load GLB model
+            const loader = new THREE.GLTFLoader();
+            loader.load('Meshy_AI_Aether_Ring_Voyager_0318152816_texture.glb', (gltf) => {
+                const model = gltf.scene;
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 20 / (maxDim || 1);
+                model.scale.setScalar(scale);
+                model.position.sub(center.multiplyScalar(scale));
+
+                chaserGroup.add(model);
+            });
+
+            // Purple aura sphere
+            const auraGeo = new THREE.SphereGeometry(1.2, 16, 16);
+            const auraMat = new THREE.MeshBasicMaterial({
+                color: 0xcc44ff, transparent: true, opacity: 0.18,
+                blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            chaserAura = new THREE.Mesh(auraGeo, auraMat);
+            chaserGroup.add(chaserAura);
+
+            chaserLight = new THREE.PointLight(0xcc44ff, 3, 300);
+            chaserGroup.add(chaserLight);
+
             scene.add(chaserGroup);
         }
 
@@ -1044,6 +1071,8 @@
             }
             chaserActive = false;
             chaserEcef = null;
+            chaserLight = null;
+            chaserAura = null;
         }
 
         function fireBeam(crossData) {
@@ -1759,13 +1788,16 @@
                         chaserEcef.y - centerECEF.y,
                         chaserEcef.z - centerECEF.z
                     );
-                    // Spin
-                    chaserGroup.rotation.x += dt * 2.0;
-                    chaserGroup.rotation.y += dt * 1.5;
+                    // ENU orientation (upright, no spin)
+                    const chEcefC3 = new Cesium.Cartesian3(chaserEcef.x, chaserEcef.y, chaserEcef.z);
+                    const chEnuMat = Cesium.Transforms.eastNorthUpToFixedFrame(chEcefC3);
+                    chaserGroup.quaternion.setFromRotationMatrix(
+                        new THREE.Matrix4().fromArray(chEnuMat)
+                    ).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2));
                     // Pulse glow
                     const cp = 0.5 + 0.5 * Math.sin(T * 5.0);
-                    chaserGroup.children[1].material.opacity = 0.15 + cp * 0.2;
-                    chaserGroup.children[2].intensity = 3.0 + cp * 2.0;
+                    if (chaserAura) chaserAura.material.opacity = 0.12 + cp * 0.15;
+                    if (chaserLight) chaserLight.intensity = 3.0 + cp * 2.0;
                     // Fire blue beams
                     if ((T - chaserLastFireTime) > CHASER_BEAM_INTERVAL) {
                         fireChaserBeam();
